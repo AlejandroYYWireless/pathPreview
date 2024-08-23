@@ -4,92 +4,13 @@ const canvas = document.getElementById("warehouseCanvas");
 const ctx = canvas.getContext("2d");
 
 const binsOnLoad = ['7-GG', '8-GG', '317-WD', '6-GG', '26-GG', '1972-SM', '11-GG', '33-GG', '320-WD', '318-WD', '2039-SM', '24-PB', '5-GG', '31-GG', '183-GG', '14-PB', '32-GG', '42-GG', '55-GG', '12-GG'];
-const lastLocation = "950-SM";
+const lastLocation = "1200-SM";
 
 function initializeCanvas() {
   canvas.width = warehouseLayout.canvas.width;
   canvas.height = warehouseLayout.canvas.height;
 }
-class BinaryHeap {
-    constructor(scoreFunction) {
-      this.content = [];
-      this.scoreFunction = scoreFunction;
-    }
-  
-    push(element) {
-      this.content.push(element);
-      this.bubbleUp(this.content.length - 1);
-    }
-  
-    pop() {
-      const result = this.content[0];
-      const end = this.content.pop();
-      if (this.content.length > 0) {
-        this.content[0] = end;
-        this.sinkDown(0);
-      }
-      return result;
-    }
-  
-    remove(node) {
-      const length = this.content.length;
-      for (let i = 0; i < length; i++) {
-        if (this.content[i] !== node) continue;
-        const end = this.content.pop();
-        if (i === length - 1) break;
-        this.content[i] = end;
-        this.bubbleUp(i);
-        this.sinkDown(i);
-        break;
-      }
-    }
-  
-    size() {
-      return this.content.length;
-    }
-  
-    bubbleUp(n) {
-      const element = this.content[n];
-      const score = this.scoreFunction(element);
-      while (n > 0) {
-        const parentN = Math.floor((n + 1) / 2) - 1;
-        const parent = this.content[parentN];
-        if (score >= this.scoreFunction(parent)) break;
-        this.content[parentN] = element;
-        this.content[n] = parent;
-        n = parentN;
-      }
-    }
-  
-    sinkDown(n) {
-      const length = this.content.length;
-      const element = this.content[n];
-      const elemScore = this.scoreFunction(element);
-  
-      while (true) {
-        let child2N = (n + 1) * 2;
-        let child1N = child2N - 1;
-        let swap = null;
-        let child1Score;
-        if (child1N < length) {
-          const child1 = this.content[child1N];
-          child1Score = this.scoreFunction(child1);
-          if (child1Score < elemScore) swap = child1N;
-        }
-        if (child2N < length) {
-          const child2 = this.content[child2N];
-          const child2Score = this.scoreFunction(child2);
-          if (child2Score < (swap === null ? elemScore : child1Score)) {
-            swap = child2N;
-          }
-        }
-        if (swap === null) break;
-        this.content[n] = this.content[swap];
-        this.content[swap] = element;
-        n = swap;
-      }
-    }
-  }
+
 function drawSquares() {
   warehouseLayout.rectangles.forEach(rect => {
     ctx.fillStyle = "rgba(162, 162, 162, 0.32)";
@@ -138,8 +59,13 @@ function getClosestBinCoordinates(input) {
       const minValue = Math.min(...Object.values(rect.corner_values));
       const maxValue = Math.max(...Object.values(rect.corner_values));
       
-      const distanceToRange = binValue < minValue ? minValue - binValue :
-                              binValue > maxValue ? binValue - maxValue : 0;
+      let distanceToRange;
+      if (label === 'WD') {
+        distanceToRange = Math.abs(binValue - Math.floor((minValue + maxValue) / 2));
+      } else {
+        distanceToRange = binValue < minValue ? minValue - binValue :
+                          binValue > maxValue ? binValue - maxValue : 0;
+      }
       
       if (distanceToRange < minDistance) {
         minDistance = distanceToRange;
@@ -152,28 +78,37 @@ function getClosestBinCoordinates(input) {
       return null;
     }
   
-    const clampedBinValue = Math.max(
-      Math.min(binValue, Math.max(...Object.values(closestRect.corner_values))),
-      Math.min(...Object.values(closestRect.corner_values))
-    );
-  
-    // Determine if the point should be on the top or bottom
-    const isTop = Math.abs(closestRect.corner_values.top_left - clampedBinValue) <
-                  Math.abs(closestRect.corner_values.bottom_left - clampedBinValue);
-  
     let x, y;
-    if (isTop) {
-      // Interpolate along the top edge
-      const t = (clampedBinValue - closestRect.corner_values.top_left) / 
-                (closestRect.corner_values.top_right - closestRect.corner_values.top_left);
-      x = closestRect.corners.top_left.x + t * (closestRect.corners.top_right.x - closestRect.corners.top_left.x);
-      y = closestRect.corners.top_left.y;
+    if (label === 'WD') {
+      // For WD bins, interpolate along the left edge
+      const minValue = Math.min(...Object.values(closestRect.corner_values));
+      const maxValue = Math.max(...Object.values(closestRect.corner_values));
+      const t = (binValue - minValue) / (maxValue - minValue);
+      x = closestRect.corners.top_left.x;
+      y = closestRect.corners.top_left.y + t * (closestRect.corners.bottom_left.y - closestRect.corners.top_left.y);
     } else {
-      // Interpolate along the bottom edge
-      const t = (clampedBinValue - closestRect.corner_values.bottom_left) / 
-                (closestRect.corner_values.bottom_right - closestRect.corner_values.bottom_left);
-      x = closestRect.corners.bottom_left.x + t * (closestRect.corners.bottom_right.x - closestRect.corners.bottom_left.x);
-      y = closestRect.corners.bottom_left.y;
+      // For other bins, use the original top/bottom edge interpolation
+      const clampedBinValue = Math.max(
+        Math.min(binValue, Math.max(...Object.values(closestRect.corner_values))),
+        Math.min(...Object.values(closestRect.corner_values))
+      );
+    
+      const isTop = Math.abs(closestRect.corner_values.top_left - clampedBinValue) <
+                    Math.abs(closestRect.corner_values.bottom_left - clampedBinValue);
+    
+      if (isTop) {
+        // Interpolate along the top edge
+        const t = (clampedBinValue - closestRect.corner_values.top_left) / 
+                  (closestRect.corner_values.top_right - closestRect.corner_values.top_left);
+        x = closestRect.corners.top_left.x + t * (closestRect.corners.top_right.x - closestRect.corners.top_left.x);
+        y = closestRect.corners.top_left.y;
+      } else {
+        // Interpolate along the bottom edge
+        const t = (clampedBinValue - closestRect.corner_values.bottom_left) / 
+                  (closestRect.corner_values.bottom_right - closestRect.corner_values.bottom_left);
+        x = closestRect.corners.bottom_left.x + t * (closestRect.corners.bottom_right.x - closestRect.corners.bottom_left.x);
+        y = closestRect.corners.bottom_left.y;
+      }
     }
   
     return { x, y };
@@ -225,64 +160,57 @@ function getNeighbors(node, grid) {
 }
 
 function aStar(start, goal, grid) {
-    const openHeap = new BinaryHeap(node => node.f);
-    const closedSet = new Set();
-    const startNode = { x: start.x, y: start.y, f: 0, g: 0, h: 0 };
-    const goalNode = { x: goal.x, y: goal.y };
-  
-    openHeap.push(startNode);
-  
-    while (openHeap.size() > 0) {
-      const currentNode = openHeap.pop();
-  
-      if (currentNode.x === goalNode.x && currentNode.y === goalNode.y) {
-        return reconstructPath(currentNode);
-      }
-  
-      closedSet.add(`${currentNode.x},${currentNode.y}`);
-  
-      const neighbors = getNeighbors(currentNode, grid);
-  
-      for (const neighbor of neighbors) {
-        if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
-  
-        const gScore = currentNode.g + 1; // Assuming each step costs 1
-        const hScore = manhattanDistance(neighbor, goalNode);
-        const fScore = gScore + hScore;
-  
-        const existingNode = openHeap.content.find(n => n.x === neighbor.x && n.y === neighbor.y);
-  
-        if (!existingNode) {
-          neighbor.g = gScore;
-          neighbor.h = hScore;
-          neighbor.f = fScore;
-          neighbor.parent = currentNode;
-          openHeap.push(neighbor);
-        } else if (gScore < existingNode.g) {
-          openHeap.remove(existingNode);
-          existingNode.g = gScore;
-          existingNode.f = fScore;
-          existingNode.parent = currentNode;
-          openHeap.push(existingNode);
+  const openSet = [start];
+  const cameFrom = new Map();
+  const gScore = new Map();
+  const fScore = new Map();
+
+  gScore.set(`${start.x},${start.y}`, 0);
+  fScore.set(`${start.x},${start.y}`, euclideanDistance(start, goal));
+
+  while (openSet.length > 0) {
+    let current = openSet.reduce((a, b) =>
+      fScore.get(`${a.x},${a.y}`) < fScore.get(`${b.x},${b.y}`) ? a : b
+    );
+
+    if (current.x === goal.x && current.y === goal.y) {
+      return reconstructPath(cameFrom, current);
+    }
+
+    openSet.splice(openSet.indexOf(current), 1);
+
+    for (const neighbor of getNeighbors(current, grid)) {
+      const tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
+
+      if (
+        !gScore.has(`${neighbor.x},${neighbor.y}`) ||
+        tentativeGScore < gScore.get(`${neighbor.x},${neighbor.y}`)
+      ) {
+        cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+        gScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore);
+        fScore.set(
+          `${neighbor.x},${neighbor.y}`,
+          tentativeGScore + euclideanDistance(neighbor, goal)
+        );
+
+        if (!openSet.some((node) => node.x === neighbor.x && node.y === neighbor.y)) {
+          openSet.push(neighbor);
         }
       }
     }
-  
-    return null; // No path found
   }
 
-function reconstructPath(node) {
-    const path = [];
-    while (node) {
-      path.unshift({ x: node.x, y: node.y });
-      node = node.parent;
-    }
-    return path;
+  return null; // No path found
+}
+
+function reconstructPath(cameFrom, current) {
+  const path = [current];
+  while (cameFrom.has(`${current.x},${current.y}`)) {
+    current = cameFrom.get(`${current.x},${current.y}`);
+    path.unshift(current);
   }
-  
-  function manhattanDistance(a, b) {
-    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-  }
+  return path;
+}
 
 
 
@@ -323,7 +251,7 @@ function findClosestFreePoint(point, grid) {
         }
     }
 
-    // console.error(`Unable to find a free point near (${point.x}, ${point.y})`);
+    console.error(`Unable to find a free point near (${point.x}, ${point.y})`);
     return null;
 }
 
@@ -369,37 +297,38 @@ function findBestBin() {
         continue;
       }
   
-      const path = aStar(startFree, endFree, grid);
-      if (!path) {
-        console.warn(`No path found to bin ${binInput}`);
-        continue;
+      const distance = euclideanDistance(startFree, endFree);
+      
+      // If the distance is very small, create a minimal path
+      if (distance < 2) {
+        const minimalPath = [
+          startFree,
+          { x: startFree.x + 1, y: startFree.y },
+          { x: startFree.x + 1, y: startFree.y + 1 },
+          { x: startFree.x, y: startFree.y + 1 },
+          endFree
+        ];
+        return { bestBin: binInput, path: minimalPath };
       }
   
-      const pathLength = calculatePathLength(path);
-      
-      if (pathLength < shortestPathLength) {
-        shortestPathLength = pathLength;
+      if (distance < shortestPathLength) {
+        shortestPathLength = distance;
         bestBin = binInput;
-        shortestPath = path;
+        shortestPath = [startFree, endFree];
       }
     }
   
     if (bestBin && shortestPath) {
-      return { bestBin, path: shortestPath };
+      const path = aStar(shortestPath[0], shortestPath[1], grid);
+      return { bestBin, path };
     }
   
     console.error("Unable to find a valid path to any bin.");
     return null;
-  }
-  
-  function calculatePathLength(path) {
-    let length = 0;
-    for (let i = 1; i < path.length; i++) {
-      length += euclideanDistance(path[i-1], path[i]);
-    }
-    return length;
-  }
-  function drawAnimatedPath(path, endBinCoordinates) {
+ }
+
+
+function drawAnimatedPath(path, endBinCoordinates) {
     const totalLength = path.reduce((total, point, index) => {
       if (index === 0) return 0;
       return total + euclideanDistance(path[index - 1], point);
@@ -453,7 +382,7 @@ function findBestBin() {
       }
   
       // Draw the outer white line
-      ctx.strokeStyle = "#fff5ee";
+      ctx.strokeStyle = "#f7f7f7";
       ctx.lineWidth = 8;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
